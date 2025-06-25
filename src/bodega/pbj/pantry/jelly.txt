@@ -1,0 +1,84 @@
+Convert enhanced markdown to structured JSON. NO DATA LOSS.
+
+- Extract all table rows, preserve all numbers, booleans, and relationships.
+- Use enhanced headers, units, and context for columns.
+- Add technical summary, keywords, and table descriptions.
+- Output valid JSON: all input rows must appear in output, no truncation.
+
+CRITICAL: Never add HTML comments or continuation markers. Extract complete table structures exactly as they appear in the input.
+
+INPUT CONTEXT:
+- Enhanced markdown with improved headers and integrated context
+- Tables contain boolean values (TRUE/FALSE, YES/NO) from visual marker conversion
+- Content includes technical specifications, measurements, and structured datasets
+- Headers have been enhanced with units and descriptive names
+
+EXTRACTION OBJECTIVES:
+1. CREATE structured JSON optimized for RAG (Retrieval-Augmented Generation)
+2. PRESERVE all tabular data with complete fidelity
+3. GENERATE meaningful summaries and keywords for searchability
+4. MAINTAIN technical precision and measurement accuracy
+5. STRUCTURE data for efficient downstream processing
+
+JSON OUTPUT SPECIFICATION:
+{
+  "title": "Document/Page title based on content",
+  "summary": "Technical summary highlighting key specifications and data (X sentences)",
+  "keywords": ["technical_term_1", "specification_2", "measurement_3", "feature_4", "application_5"],
+  "tables": [
+    {
+      "table_id": "table_N",
+      "title": "Descriptive table title from enhanced headers",
+      "description": "Technical description explaining table purpose and context",
+      "columns": ["Enhanced Column Names (with units and context)"],
+      "rows": [["preserved_original_values", "boolean_values", "measurements"]],
+      "metadata": {
+        "row_count": Y,
+        "column_count": Z,
+        "data_types": ["text", "boolean", "numeric", "measurement"],
+        "units": ["mm", "kg", "percentage", "boolean"],
+        "technical_category": "specifications|compatibility|measurements|performance"
+      }
+    }
+  ]
+}
+
+EXTRACTION STANDARDS:
+
+DATA PRESERVATION REQUIREMENTS:
+- EXTRACT ALL table rows without truncation or omission
+- PRESERVE exact numerical values (measurements, specifications, tolerances)
+- MAINTAIN boolean values exactly as converted (TRUE/FALSE, YES/NO)
+- RETAIN complete technical relationships and data dependencies
+- ENSURE X input rows result in X output rows
+
+CONTENT ENHANCEMENT RULES:
+- USE enhanced column names with integrated units and context
+- GENERATE technical summaries highlighting key specifications
+- CREATE searchable keywords including technical terms and measurements
+- ADD meaningful table descriptions based on enhanced context
+- CLASSIFY data types and technical categories accurately
+
+QUALITY VALIDATION:
+- Verify complete data extraction across all N tables
+- Confirm numerical precision matches input specifications
+- Validate boolean consistency from visual marker conversion
+- Ensure technical terminology accuracy throughout
+- Check metadata completeness and accuracy
+
+CRITICAL REQUIREMENTS:
+- Zero data loss: every row must be extracted
+- Numerical fidelity: preserve all measurements and specifications exactly
+- Boolean integrity: maintain TRUE/FALSE values from marker conversion
+- Enhanced structure: utilize improved headers and context
+- RAG optimization: structure for efficient retrieval and generation
+
+TECHNICAL FOCUS AREAS:
+- Specifications and tolerances
+- Compatibility matrices and boolean tables
+- Measurement data with units
+- Performance characteristics
+- Technical classifications and categories
+
+OUTPUT INSTRUCTION:
+Return valid JSON with complete data extraction in the specified formatting. 

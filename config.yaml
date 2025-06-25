@@ -1,0 +1,52 @@
+# Bodega Configuration File
+# Combines settings for PB&J pipeline and soda document storage
+
+# PB&J Pipeline Configuration
+pbj:
+  # PDF Processing Settings
+  llamaparse_api_key: "${LLAMAPARSE_API_KEY}"
+  use_premium_mode: false
+  
+  # OpenAI Settings
+  openai_api_key: "${OPENAI_API_KEY}"
+  openai_model: "gpt-4"
+  
+  # Output Settings
+  output_base_dir: "processed_documents"
+  create_timestamped_folders: true
+  enable_verbose_logging: true
+  page_separator: "\n---\n"
+  max_timeout: 180
+
+# Soda (Document Store) Configuration
+soda:
+  # AWS Settings
+  aws_region: "${AWS_REGION:-us-east-1}"
+  bucket_name: "${DOC_BUCKET}"
+  
+  # Document States
+  default_state: "raw"
+  enable_state_validation: true
+  
+  # Caching
+  enable_cache: true
+  cache_ttl_seconds: 3600
+  
+  # Performance
+  max_concurrent_operations: 10
+  retry_attempts: 3
+  retry_delay_seconds: 1
+
+# Bodega Orchestrator Settings
+bodega:
+  # Processing Settings
+  auto_upload_to_aws: true
+  generate_doc_ids: true
+  
+  # Error Handling
+  continue_on_pbj_error: false
+  continue_on_soda_error: false
+  
+  # Logging
+  log_level: "INFO"
+  enable_health_checks: true 
