@@ -9,14 +9,14 @@ Components:
 - soda: AWS document storage and state management
 """
 
-# Import main components from pbj
-from .pbj.sandwich import Sandwich
-from .pbj.config import create_config, PipelineConfig
+# Import main components from pbj (nested src structure)
+from .pbj.src.pbj.sandwich import Sandwich
+from .pbj.src.pbj.config import create_config, PipelineConfig
 
-# Import main components from soda (doc_store)
-from .soda.document_store import DocumentStore, create_document_store
-from .soda.document_states import DocumentState, DocumentStateManager
-from .soda.config import DocStoreConfig, get_config as get_soda_config
+# Import main components from soda (doc_store) 
+from .soda.doc_store.document_store import DocumentStore, create_document_store
+from .soda.doc_store.document_states import DocumentState, DocumentStateManager
+from .soda.doc_store.config import DocStoreConfig, get_config as get_soda_config
 
 # Import main Bodega orchestrator
 from .bodega import Bodega

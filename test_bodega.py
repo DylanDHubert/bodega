@@ -12,6 +12,15 @@ import sys
 from pathlib import Path
 import yaml
 
+# Check for repository updates before running
+try:
+    from check_updates import prompt_for_updates
+    if not prompt_for_updates():
+        print("🔄 Please re-run the script after updating repositories.")
+        sys.exit(0)
+except ImportError:
+    print("⚠️ Repository update checker not available. Continuing...")
+
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 

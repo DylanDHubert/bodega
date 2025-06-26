@@ -15,12 +15,12 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
-from .pbj.sandwich import Sandwich
-from .pbj.config import create_config as create_pbj_config
-from .soda.document_store import DocumentStore, create_document_store
-from .soda.document_states import DocumentState
-from .soda.s3_ops import put_object_content
-from .inspector.launch import launch_inspector_app
+from .pbj.src.pbj.sandwich import Sandwich
+from .pbj.src.pbj.config import create_config as create_pbj_config
+from .soda.doc_store.document_store import DocumentStore, create_document_store
+from .soda.doc_store.document_states import DocumentState
+from .soda.doc_store.s3_ops import put_object_content
+from .inspector_adapter import launch_inspector_app
 
 
 class Bodega:
@@ -604,3 +604,135 @@ class Bodega:
         print(f"💡 You can manually upload final data when ready:")
         print(f"   bodega.upload_final_inspected_output(document_folder='{document_folder}')")
         return False 
+
+    def upload_final_approved_folder(self, final_folder_path: str) -> Dict[str, Any]:
+        """
+        Upload Inspector-approved files from a final_* folder to AWS with stage=final tags.
+        
+        This method is called when the Inspector creates a final_* folder after approval.
+        
+        Args:
+            final_folder_path: Path to the final_* folder (e.g., "final_test_20250625_223343")
+            
+        Returns:
+            Dict containing upload results and metadata
+        """
+        from pathlib import Path
+        import json
+        
+        folder_path = Path(final_folder_path)
+        if not folder_path.exists():
+            raise ValueError(f"Final folder not found: {final_folder_path}")
+            
+        print(f"🚀 Uploading final approved files from: {final_folder_path}")
+        
+        # Extract doc_id from folder name (remove "final_" prefix)
+        folder_name = folder_path.name
+        if not folder_name.startswith("final_"):
+            raise ValueError(f"Invalid final folder name: {folder_name}")
+            
+        # Extract original doc_id by removing "final_" and finding matching pattern
+        # e.g., "final_test_20250625_223343" -> find "test_20250625_*" in processed_documents
+        base_name = folder_name.replace("final_", "")
+        
+        # Find the corresponding processed document
+        processed_dir = Path(self.pbj_config.output_base_dir)
+        matching_docs = list(processed_dir.glob(f"{base_name.split('_')[0]}_*"))
+        
+        if not matching_docs:
+            # Fallback: use the base name as doc_id
+            doc_id = base_name
+        else:
+            # Use the most recent matching document
+            doc_id = sorted(matching_docs, key=lambda x: x.name)[-1].name
+            
+        print(f"📋 Detected document ID: {doc_id}")
+        
+        # Files to upload with their expected names in the final folder
+        final_files = {
+            "approved_output.json": None,  # Will auto-detect
+            "approved_output.md": None,    # Will auto-detect
+            "inspector_metadata.json": "inspector_metadata.json"
+        }
+        
+        # Auto-detect the final JSON and MD files
+        json_files = list(folder_path.glob("*final.json"))
+        md_files = list(folder_path.glob("*final.md"))
+        
+        if json_files:
+            final_files["approved_output.json"] = json_files[0].name
+        if md_files:
+            final_files["approved_output.md"] = md_files[0].name
+            
+        uploaded_files = []
+        
+        # Upload each final file to S3 with stage=final tags
+        for s3_name, local_name in final_files.items():
+            if local_name is None:
+                print(f"⚠️  Skipping {s3_name}: file not found")
+                continue
+                
+            local_file = folder_path / local_name
+            if not local_file.exists():
+                print(f"⚠️  Skipping {s3_name}: {local_file} not found")
+                continue
+                
+            # Upload to final/ prefix in S3
+            s3_key = f"final/{doc_id}/{s3_name}"
+            
+            try:
+                with open(local_file, "rb") as f:
+                    content = f.read()
+                    
+                # Upload with stage=final tags
+                from .soda.doc_store.s3_ops import put_object_content
+                put_object_content(
+                    bucket=self.soda.bucket,
+                    key=s3_key,
+                    content=content,
+                    content_type=self._get_content_type(local_file),
+                    tags={
+                        "stage": "final",
+                        "doc_id": doc_id,
+                        "approved_at": datetime.now().isoformat(),
+                        "source": "inspector_approval"
+                    }
+                )
+                
+                uploaded_files.append(s3_key)
+                print(f"✅ Uploaded: {s3_key} (stage=final)")
+                
+            except Exception as e:
+                print(f"❌ Failed to upload {s3_key}: {e}")
+                raise
+                
+        # Update document state to FINAL
+        try:
+            original_key = f"raw/{doc_id}/original.pdf"
+            self.soda.state_manager.transition_document_state(
+                original_key,
+                DocumentState.FINAL,
+                metadata={
+                    "finalized_at": datetime.now().isoformat(),
+                    "final_files_count": len(uploaded_files),
+                    "inspector_folder": final_folder_path
+                }
+            )
+            print(f"📋 Document {doc_id} state updated to FINAL")
+            
+        except Exception as e:
+            print(f"⚠️  Warning: Failed to update document state: {e}")
+            # Don't raise here - files were uploaded successfully
+            
+        result = {
+            "doc_id": doc_id,
+            "final_folder": final_folder_path,
+            "uploaded_files": uploaded_files,
+            "upload_timestamp": datetime.now().isoformat(),
+            "status": "success"
+        }
+        
+        print(f"🎉 Final approval upload complete!")
+        print(f"📊 Uploaded {len(uploaded_files)} files to s3://{self.soda.bucket}/final/{doc_id}/")
+        
+        return result
