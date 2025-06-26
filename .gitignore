@@ -79,3 +79,6 @@ sandwich_inspector_app.log
 test_*.pdf
 test_*.json
 test_*.md 
+
+# Enviormental Variables
+.env
