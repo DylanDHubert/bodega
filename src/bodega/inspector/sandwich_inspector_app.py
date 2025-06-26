@@ -392,10 +392,6 @@ class SandwichInspector:
         except Exception as e:
             st.error(f"❌ Error loading document: {e}")
 
-
-
-
-
     def render_page_content(self):
         """Render optimized accuracy review UI - side-by-side comparison"""
         if not st.session_state.processed_pages:
@@ -709,8 +705,6 @@ class SandwichInspector:
         except Exception as e:
             st.error(f"Error saving portfolio tag: {str(e)}")
 
-
-
     def create_final_output_folder(self):
         """Create final output folder with consolidated markdown and JSON"""
         if not st.session_state.document_folder or not st.session_state.processed_pages:
@@ -774,9 +768,14 @@ class SandwichInspector:
                 
                 consolidated_json["pages"].append(page_data)
             
-            # Save consolidated JSON
+            # Save consolidated JSON in final output directory
             final_json_path = final_output_dir / f"{doc_name}_final.json"
             with open(final_json_path, 'w') as f:
+                json.dump(consolidated_json, f, indent=2, ensure_ascii=False)
+            
+            # ALSO save in original document folder for Bodega to find
+            original_final_json = st.session_state.document_folder / "final_approved_output.json"
+            with open(original_final_json, 'w') as f:
                 json.dump(consolidated_json, f, indent=2, ensure_ascii=False)
             
             # 3. Consolidate all enhanced markdowns into a single final markdown
@@ -789,10 +788,20 @@ class SandwichInspector:
                 consolidated_markdown += page.content + "\n\n"
                 consolidated_markdown += "---\n\n"
             
-            # Save consolidated markdown
+            # Save consolidated markdown in final output directory
             final_md_path = final_output_dir / f"{doc_name}_final.md"
             with open(final_md_path, 'w', encoding='utf-8') as f:
                 f.write(consolidated_markdown)
+            
+            # ALSO save in original document folder for Bodega to find
+            original_final_md = st.session_state.document_folder / "final_approved_output.md"
+            with open(original_final_md, 'w', encoding='utf-8') as f:
+                f.write(consolidated_markdown)
+            
+            # 4. Create completion flag for Bodega to detect
+            completion_flag = st.session_state.document_folder / "inspector_completed.flag"
+            with open(completion_flag, 'w') as f:
+                f.write(f"Completed at {datetime.now().isoformat()}\n")
             
             portfolio_info = f"\n            - 🏷️ Portfolio: {st.session_state.portfolio_tag}" if st.session_state.get('portfolio_tag') else ""
             
@@ -813,12 +822,15 @@ class SandwichInspector:
             - ✅ Approved: {len([i for i in st.session_state.page_statuses.values() if i == 'approved'])} pages
             - 🚩 Flagged: {len(st.session_state.flagged_pages)} pages  
             - 📊 Total Tables: {sum(len(page.tables) for page in st.session_state.processed_pages)}{portfolio_info}
+            
+            **🤖 Bodega Integration:**
+            - ✅ Final approved data saved in original folder
+            - ✅ Completion flag created for automatic upload
+            - 🚀 Bodega will automatically detect and upload final data
             """)
             
         except Exception as e:
             st.error(f"❌ Error creating final output folder: {str(e)}")
-
-
 
     def run(self):
         """Main app runner"""

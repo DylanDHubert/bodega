@@ -10,6 +10,7 @@ A. Take PDF → B. Process with PB&J → C. Upload to AWS → D. Launch Inspecto
 import os
 import sys
 from pathlib import Path
+import yaml
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -30,7 +31,7 @@ def test_complete_pipeline():
     print("=" * 60)
     
     # Check if test file exists
-    test_pdf = "test_data.pdf"
+    test_pdf = "test.pdf"
     if not Path(test_pdf).exists():
         print(f"❌ Test file not found: {test_pdf}")
         return
@@ -38,14 +39,38 @@ def test_complete_pipeline():
     print(f"📄 Test file: {test_pdf}")
     print(f"📏 File size: {Path(test_pdf).stat().st_size / 1024:.1f} KB")
     
-    # Initialize Bodega with dummy AWS bucket for testing
+    # Get AWS configuration from environment
+    aws_bucket = os.getenv("DOC_BUCKET")
+    aws_region = os.getenv("AWS_REGION", "us-east-1")
+    
+    if not aws_bucket:
+        print("❌ DOC_BUCKET environment variable not set")
+        print("💡 Please set DOC_BUCKET in your .env file")
+        return
+    
+    print(f"☁️  Using AWS bucket: {aws_bucket}")
+    print(f"🌍 Using AWS region: {aws_region}")
+    
+    # Load PB&J configuration from config.yaml
+    max_tokens = 8000  # Default value
+    try:
+        with open("config.yaml", "r") as f:
+            config_data = yaml.safe_load(f)
+            if config_data and "pbj" in config_data:
+                max_tokens = config_data["pbj"].get("max_tokens", 8000)
+                print(f"🤖 Using max_tokens: {max_tokens}")
+    except Exception as e:
+        print(f"⚠️  Could not load config.yaml: {e}")
+    
+    # Initialize Bodega with actual AWS configuration
     print("\n🔧 Initializing Bodega...")
     try:
         bodega = Bodega(
-            aws_bucket="dummy-bucket",  # Dummy bucket for testing
-            aws_region="us-east-1",
+            aws_bucket=aws_bucket,  # Use actual bucket from environment
+            aws_region=aws_region,
             use_premium=False,
-            openai_model="gpt-4"
+            openai_model="gpt-4",
+            max_tokens=max_tokens  # Pass max_tokens from config
         )
         print("✅ Bodega initialized successfully")
     except Exception as e:
@@ -73,7 +98,7 @@ def test_complete_pipeline():
         result = bodega.process_complete_pipeline(
             pdf_path=test_pdf,
             launch_inspector=True,  # Launch Inspector after processing
-            auto_upload_final=False  # Manual final upload after Inspector review
+            wait_for_inspector=True  # Wait for Inspector completion and auto-upload final data
         )
         
         print(f"\n🎉 COMPLETE PIPELINE SUCCESS!")
@@ -85,7 +110,7 @@ def test_complete_pipeline():
         
         # Show next steps
         print(f"\n📋 NEXT STEPS:")
-        print(f"1. 🔍 Complete review in Inspector (browser should be open)")
+        print(f"1. �� Complete review in Inspector (browser should be open)")
         print(f"2. 📤 After review, run the final upload command:")
         print(f"   {result['next_steps']['final_upload_command']}")
         
@@ -108,10 +133,18 @@ def test_step_by_step():
         print(f"❌ Test file not found: {test_pdf}")
         return
     
+    # Get AWS configuration from environment
+    aws_bucket = os.getenv("DOC_BUCKET")
+    aws_region = os.getenv("AWS_REGION", "us-east-1")
+    
+    if not aws_bucket:
+        print("❌ DOC_BUCKET environment variable not set")
+        return
+    
     # Initialize Bodega
     bodega = Bodega(
-        aws_bucket="dummy-bucket",
-        aws_region="us-east-1",
+        aws_bucket=aws_bucket,  # Use actual bucket from environment
+        aws_region=aws_region,
         use_premium=False,
         openai_model="gpt-4"
     )
@@ -171,10 +204,18 @@ def test_inspector_only():
     latest_folder = max(folders, key=lambda x: x.stat().st_mtime)
     print(f"📁 Found document folder: {latest_folder.name}")
     
+    # Get AWS configuration from environment
+    aws_bucket = os.getenv("DOC_BUCKET")
+    aws_region = os.getenv("AWS_REGION", "us-east-1")
+    
+    if not aws_bucket:
+        print("❌ DOC_BUCKET environment variable not set")
+        return
+    
     # Initialize Bodega
     bodega = Bodega(
-        aws_bucket="dummy-bucket",
-        aws_region="us-east-1"
+        aws_bucket=aws_bucket,  # Use actual bucket from environment
+        aws_region=aws_region
     )
     
     # Launch Inspector
@@ -187,7 +228,7 @@ if __name__ == "__main__":
     
     # Check environment
     print("🔍 Environment Check:")
-    required_vars = ["LLAMAPARSE_API_KEY", "OPENAI_API_KEY"]
+    required_vars = ["LLAMAPARSE_API_KEY", "OPENAI_API_KEY", "DOC_BUCKET"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     
     if missing_vars:
@@ -198,16 +239,9 @@ if __name__ == "__main__":
         print("✅ All required environment variables found")
     
     # Run the complete pipeline test
-    result = test_complete_pipeline()
+    test_complete_pipeline()
     
-    if result:
-        print(f"\n🎉 Test completed successfully!")
-        print(f"📁 Check the output in: {result['document_info']['document_folder']}")
-        print(f"🔍 Inspector should be open in your browser")
-    else:
-        print(f"\n❌ Test failed!")
-        print(f"💡 You can also try:")
-        print(f"   - test_step_by_step() for debugging")
-        print(f"   - test_inspector_only() for existing documents")
-    
+    print(f"\n💡 You can also try:")
+    print(f"   - test_step_by_step() for debugging")
+    print(f"   - test_inspector_only() for existing documents")
     print("=" * 60) 

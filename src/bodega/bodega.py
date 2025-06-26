@@ -37,7 +37,8 @@ class Bodega:
         aws_region: Optional[str] = None,
         pbj_config: Optional[Dict[str, Any]] = None,
         use_premium: bool = False,
-        openai_model: str = "gpt-4"
+        openai_model: str = "gpt-4",
+        max_tokens: Optional[int] = None
     ):
         """
         Initialize Bodega with both PB&J and soda components.
@@ -48,6 +49,7 @@ class Bodega:
             pbj_config: Configuration for PB&J pipeline
             use_premium: Use LlamaParse premium mode
             openai_model: OpenAI model for processing
+            max_tokens: Maximum tokens for OpenAI API calls
         """
         # Initialize soda (document storage)
         self.soda = create_document_store(
@@ -62,6 +64,10 @@ class Bodega:
             'openai_model': openai_model
         })
         
+        # Add max_tokens if provided
+        if max_tokens is not None:
+            pbj_settings['max_tokens'] = max_tokens
+        
         self.pbj_config = create_pbj_config(**pbj_settings)
         self.sandwich = Sandwich(config=self.pbj_config)
         
@@ -72,7 +78,8 @@ class Bodega:
         pdf_path: str,
         doc_id: Optional[str] = None,
         launch_inspector: bool = True,
-        auto_upload_final: bool = False
+        auto_upload_final: bool = False,
+        wait_for_inspector: bool = False
     ) -> Dict[str, Any]:
         """
         Complete end-to-end pipeline: PDF → PB&J → AWS → Inspector → Final AWS
@@ -82,6 +89,7 @@ class Bodega:
             doc_id: Optional document ID (auto-generated if not provided)
             launch_inspector: Whether to launch the Inspector app after processing
             auto_upload_final: Whether to automatically upload final output after Inspector
+            wait_for_inspector: Whether to wait for Inspector completion and auto-upload
             
         Returns:
             Dictionary with complete pipeline results
@@ -121,7 +129,10 @@ class Bodega:
                 # Launch the inspector
                 self.launch_inspector(document_folder=document_folder)
                 
-                if auto_upload_final:
+                if wait_for_inspector:
+                    print(f"\n⏳ Waiting for Inspector completion...")
+                    self.wait_for_inspector_completion(document_folder)
+                elif auto_upload_final:
                     print(f"\n⏳ Waiting for Inspector review to complete...")
                     print(f"💡 After completing review in Inspector, the final upload will happen automatically")
                     # Note: In a real implementation, you might want to wait for user confirmation
@@ -151,7 +162,7 @@ class Bodega:
                 "pbj_result": result,
                 "next_steps": {
                     "inspector_launched": launch_inspector,
-                    "final_upload_required": not auto_upload_final,
+                    "final_upload_required": not (auto_upload_final or wait_for_inspector),
                     "final_upload_command": f"bodega.upload_final_inspected_output(document_folder='{document_folder}')"
                 }
             }
@@ -165,7 +176,7 @@ class Bodega:
             
             if launch_inspector:
                 print(f"\n🔍 Inspector launched - complete your review in the browser")
-                if not auto_upload_final:
+                if not (auto_upload_final or wait_for_inspector):
                     print(f"📤 After review, run the final upload command shown above")
             
             return pipeline_result
@@ -200,31 +211,36 @@ class Bodega:
             
             print(f"Starting Bodega processing for document: {doc_id}")
             
-            # Step 1: Mark document as processing in soda
+            # Step 1: Upload original PDF to S3 if needed
+            if upload_to_aws:
+                print("Uploading original PDF to S3...")
+                self._upload_original_pdf(pdf_path, doc_id)
+            
+            # Step 2: Mark document as processing in soda
             if upload_to_aws:
                 self.soda.mark_document_processing(doc_id, {
                     "processor": "bodega",
                     "started_at": start_time.isoformat()
                 })
             
-            # Step 2: Process with PB&J pipeline
+            # Step 3: Process with PB&J pipeline
             print("Running PB&J pipeline...")
             pbj_result = self.sandwich.process(pdf_path)
             
-            # Step 3: Upload intermediate results to AWS
+            # Step 4: Upload intermediate results to AWS
             if upload_to_aws:
                 print("Uploading intermediate results to AWS...")
                 self._upload_intermediate_results(doc_id, pbj_result)
             
-            # Step 4: Mark document as processed
+            # Step 5: Mark document as processed
             if upload_to_aws:
                 self.soda.mark_document_processed(doc_id, {
                     "processing_time": f"{(datetime.now() - start_time).total_seconds():.2f}s",
-                    "pages_processed": pbj_result.get('data_summary', {}).get('total_pages', 0),
+                    "pages_processed": str(pbj_result.get('data_summary', {}).get('total_pages', 0)),
                     "pbj_version": "1.0"
                 })
             
-            # Step 5: Create document version in soda
+            # Step 6: Create document version in soda
             if upload_to_aws:
                 self._create_document_version(doc_id, pbj_result)
             
@@ -297,6 +313,41 @@ class Bodega:
         filename = Path(pdf_path).stem
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"{filename}_{timestamp}"
+    
+    def _upload_original_pdf(self, pdf_path: str, doc_id: str) -> None:
+        """Upload the original PDF to S3 in raw state."""
+        try:
+            # Read the PDF file
+            with open(pdf_path, 'rb') as f:
+                pdf_content = f.read()
+            
+            # Create S3 key for raw document
+            s3_key = f"raw/{doc_id}/original.pdf"
+            
+            # Upload to S3
+            put_object_content(
+                bucket=self.soda.bucket,
+                key=s3_key,
+                content=pdf_content,
+                content_type="application/pdf"
+            )
+            
+            # Set initial state to RAW
+            self.soda.state_manager.transition_document_state(
+                s3_key,
+                DocumentState.RAW,
+                metadata={
+                    "original_filename": Path(pdf_path).name,
+                    "file_size": str(len(pdf_content)),
+                    "uploaded_at": datetime.now().isoformat()
+                }
+            )
+            
+            print(f"Uploaded original PDF to s3://{self.soda.bucket}/{s3_key}")
+            
+        except Exception as e:
+            print(f"Failed to upload original PDF for {doc_id}: {str(e)}")
+            raise
     
     def _upload_intermediate_results(self, doc_id: str, pbj_result: Dict[str, Any]) -> None:
         """Upload intermediate processing results to AWS."""
@@ -425,21 +476,29 @@ class Bodega:
     
     def launch_inspector(self, document_folder: Optional[str] = None, port: int = 8501):
         """
-        Launch the Streamlit inspector app for manual review of a processed document folder.
+        Launch the Inspector app for manual review and correction.
+        
         Args:
-            document_folder: Path to the processed document folder to review
-            port: Port to run the Streamlit app on (default: 8501)
+            document_folder: Path to processed document folder to review
+            port: Port to run the Streamlit app on
         """
-        if document_folder is None:
-            # Default to the most recent processed folder
-            processed_dir = Path(self.pbj_config.output_base_dir)
-            folders = sorted(processed_dir.glob("*/"), key=os.path.getmtime, reverse=True)
-            if not folders:
-                print("No processed document folders found.")
-                return
-            document_folder = str(folders[0])
         print(f"Launching inspector for folder: {document_folder}")
-        launch_inspector_app(document_folder=document_folder, port=port)
+        
+        # Launch inspector in background
+        process = launch_inspector_app(document_folder=document_folder, port=port)
+        
+        if process:
+            print(f"\n🔍 Inspector launched successfully!")
+            print(f"📋 Instructions:")
+            print(f"   1. Open your browser to: http://localhost:{port}")
+            print(f"   2. Review and edit the processed data")
+            print(f"   3. Use 'Export Final' to save approved data")
+            print(f"   4. Close the browser tab when done")
+            print(f"   5. To stop the Inspector server, run: kill {process.pid}")
+            print(f"\n💡 The Inspector will continue running in the background.")
+            print(f"   You can now continue with other tasks or run the final upload.")
+        else:
+            print(f"❌ Failed to launch Inspector")
 
     def upload_final_inspected_output(self, document_folder: Optional[str] = None, doc_id: Optional[str] = None):
         """
@@ -496,4 +555,52 @@ class Bodega:
             )
             print(f"Document {doc_id} marked as FINAL.")
         except Exception as e:
-            print(f"Failed to update document state: {e}") 
+            print(f"Failed to update document state: {e}")
+
+    def wait_for_inspector_completion(self, document_folder: str, timeout_minutes: int = 30, check_interval: int = 5):
+        """
+        Wait for Inspector to complete review and automatically upload final data.
+        
+        Args:
+            document_folder: Path to the document folder being reviewed
+            timeout_minutes: Maximum time to wait (default: 30 minutes)
+            check_interval: Seconds between checks (default: 5 seconds)
+        """
+        import time
+        from pathlib import Path
+        
+        folder_path = Path(document_folder)
+        completion_flag = folder_path / "inspector_completed.flag"
+        final_output = folder_path / "final_approved_output.json"
+        
+        print(f"⏳ Waiting for Inspector completion...")
+        print(f"📁 Watching folder: {document_folder}")
+        print(f"⏰ Timeout: {timeout_minutes} minutes")
+        print(f"💡 Complete your review in the Inspector and use 'Export Final'")
+        
+        start_time = time.time()
+        timeout_seconds = timeout_minutes * 60
+        
+        while time.time() - start_time < timeout_seconds:
+            if completion_flag.exists() and final_output.exists():
+                print(f"✅ Inspector completion detected!")
+                print(f"📤 Automatically uploading final approved data...")
+                
+                # Upload final data
+                self.upload_final_inspected_output(document_folder=document_folder)
+                
+                # Clean up flag file
+                completion_flag.unlink(missing_ok=True)
+                
+                print(f"🎉 Final upload complete!")
+                return True
+            
+            time.sleep(check_interval)
+            elapsed = int(time.time() - start_time)
+            remaining = timeout_seconds - elapsed
+            print(f"⏳ Still waiting... ({elapsed}s elapsed, {remaining}s remaining)")
+        
+        print(f"⏰ Timeout reached. Inspector may still be running.")
+        print(f"💡 You can manually upload final data when ready:")
+        print(f"   bodega.upload_final_inspected_output(document_folder='{document_folder}')")
+        return False 

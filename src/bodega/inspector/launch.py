@@ -13,7 +13,17 @@ def launch_inspector_app(document_folder=None, port=8501):
     if document_folder:
         cmd += ["--", "--document_folder", str(document_folder)]
     env = os.environ.copy()
-    subprocess.run(cmd, env=env)
+    
+    # Run in background (non-blocking)
+    try:
+        process = subprocess.Popen(cmd, env=env)
+        print(f"🚀 Streamlit Inspector launched in background (PID: {process.pid})")
+        print(f"🌐 Inspector will be available at: http://localhost:{port}")
+        print(f"💡 To stop the Inspector, run: kill {process.pid}")
+        return process
+    except Exception as e:
+        print(f"❌ Failed to launch Inspector: {e}")
+        return None
 
 if __name__ == "__main__":
     import argparse

@@ -112,7 +112,7 @@ class DocumentStateManager:
             doc_key: S3 object key
             
         Returns:
-            DocumentState: Current state, or None if no state tag
+            DocumentState or None if no state tag found
             
         Raises:
             DocumentNotFoundError: If document doesn't exist
@@ -123,8 +123,7 @@ class DocumentStateManager:
                 if not object_exists(self.bucket, doc_key):
                     raise DocumentNotFoundError(
                         f"Document not found: s3://{self.bucket}/{doc_key}",
-                        operation="get_document_state",
-                        doc_key=doc_key
+                        doc_id=doc_key
                     )
                 
                 tags = get_object_tags(self.bucket, doc_key)
@@ -184,10 +183,9 @@ class DocumentStateManager:
                     if not self._is_valid_transition(current_state, to_state):
                         raise InvalidStateTransitionError(
                             f"Invalid transition from {current_state.value} to {to_state.value}",
-                            operation="transition_document_state",
-                            from_state=current_state.value,
-                            to_state=to_state.value,
-                            doc_key=doc_key
+                            doc_id=doc_key,
+                            current_state=current_state.value,
+                            target_state=to_state.value
                         )
                 
                 # Prepare new tags
