@@ -37,6 +37,16 @@ soda:
   retry_attempts: 3
   retry_delay_seconds: 1
 
+# Inspector (Manual Review) Configuration
+inspector:
+  auto_launch: false
+  port: 8501
+  enable_editing: true
+  approval_required: true
+  portfolio_tags: ["ts knee", "knee", "hips"]
+  # Path to processed documents for review
+  processed_documents_dir: "processed_documents"
+
 # Bodega Orchestrator Settings
 bodega:
   # Processing Settings

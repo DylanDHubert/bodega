@@ -15,8 +15,15 @@ pydantic-settings>=2.0.0,<3.0.0
 # Logging and utilities
 loguru>=0.7.0,<1.0.0
 
+# Inspector (Streamlit App)
+streamlit>=1.28.0
+pandas>=1.5.0
+PyMuPDF>=1.23.0
+pathlib2>=2.3.0
+dataclasses-json>=0.5.0
+
 # Fix httpx compatibility issue
 httpx==0.24.1
 
 # Optional dependencies
-redis>=4.5.0,<5.0.0
+redis>=4.5.0,<5.0.0  # For enhanced caching 

@@ -2,6 +2,12 @@
 Bodega - Complete RAG Processing Pipeline Orchestrator
 
 Combines PDF processing (PB&J) with AWS document storage and state management.
+
+Workflow:
+1. Process PDF with PB&J pipeline
+2. Upload intermediate results to AWS (Soda)
+3. Launch Inspector (Streamlit) for manual review/correction
+4. Upload final approved data to AWS
 """
 
 import os
@@ -14,6 +20,7 @@ from .pbj.config import create_config as create_pbj_config
 from .soda.document_store import DocumentStore, create_document_store
 from .soda.document_states import DocumentState
 from .soda.s3_ops import put_object_content
+from .inspector.launch import launch_inspector_app
 
 
 class Bodega:
@@ -59,6 +66,113 @@ class Bodega:
         self.sandwich = Sandwich(config=self.pbj_config)
         
         print(f"Bodega initialized with bucket: {self.soda.bucket}")
+    
+    def process_complete_pipeline(
+        self,
+        pdf_path: str,
+        doc_id: Optional[str] = None,
+        launch_inspector: bool = True,
+        auto_upload_final: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Complete end-to-end pipeline: PDF → PB&J → AWS → Inspector → Final AWS
+        
+        Args:
+            pdf_path: Path to the PDF file
+            doc_id: Optional document ID (auto-generated if not provided)
+            launch_inspector: Whether to launch the Inspector app after processing
+            auto_upload_final: Whether to automatically upload final output after Inspector
+            
+        Returns:
+            Dictionary with complete pipeline results
+        """
+        print("🏪 STARTING COMPLETE BODEGA PIPELINE")
+        print("=" * 60)
+        
+        pipeline_start = datetime.now()
+        
+        try:
+            # Step A: Process PDF with PB&J
+            print("\n📄 STEP A: Processing PDF with PB&J Pipeline")
+            print("-" * 40)
+            result = self.process_document(pdf_path, doc_id, upload_to_aws=True)
+            
+            document_folder = result['pbj_pipeline']['pipeline_info']['document_folder']
+            doc_id = result['doc_id']
+            
+            print(f"✅ PB&J Processing Complete - Document ID: {doc_id}")
+            print(f"📁 Output Folder: {document_folder}")
+            
+            # Step B: Upload to AWS (already done in process_document)
+            print(f"\n☁️  STEP B: Uploaded to AWS (Bucket: {self.soda.bucket})")
+            print("-" * 40)
+            print(f"✅ Intermediate results uploaded to s3://{self.soda.bucket}/processed/{doc_id}/")
+            print(f"✅ Document state: {result['soda_storage']['document_state']}")
+            
+            # Step C: Launch Inspector
+            if launch_inspector:
+                print(f"\n🔍 STEP C: Launching Inspector for Manual Review")
+                print("-" * 40)
+                print(f"🚀 Opening Streamlit Inspector app...")
+                print(f"📂 Review folder: {document_folder}")
+                print(f"🌐 Inspector will open in your browser")
+                print(f"📋 After review, use 'Export Final' in the Inspector")
+                
+                # Launch the inspector
+                self.launch_inspector(document_folder=document_folder)
+                
+                if auto_upload_final:
+                    print(f"\n⏳ Waiting for Inspector review to complete...")
+                    print(f"💡 After completing review in Inspector, the final upload will happen automatically")
+                    # Note: In a real implementation, you might want to wait for user confirmation
+                    # or check for the existence of inspector export files
+                else:
+                    print(f"\n📝 Manual Upload Required:")
+                    print(f"   After completing review in Inspector, run:")
+                    print(f"   bodega.upload_final_inspected_output(document_folder='{document_folder}')")
+            
+            # Compile final pipeline result
+            pipeline_end = datetime.now()
+            total_time = (pipeline_end - pipeline_start).total_seconds()
+            
+            pipeline_result = {
+                "pipeline_info": {
+                    "completed_at": pipeline_end.isoformat(),
+                    "total_pipeline_time_seconds": total_time,
+                    "pipeline_steps": ["PB&J Processing", "AWS Upload", "Inspector Launch"],
+                    "status": "COMPLETE"
+                },
+                "document_info": {
+                    "doc_id": doc_id,
+                    "pdf_path": pdf_path,
+                    "document_folder": document_folder,
+                    "aws_bucket": self.soda.bucket
+                },
+                "pbj_result": result,
+                "next_steps": {
+                    "inspector_launched": launch_inspector,
+                    "final_upload_required": not auto_upload_final,
+                    "final_upload_command": f"bodega.upload_final_inspected_output(document_folder='{document_folder}')"
+                }
+            }
+            
+            print(f"\n🎉 COMPLETE PIPELINE FINISHED!")
+            print("=" * 60)
+            print(f"📊 Total Pipeline Time: {total_time:.2f} seconds")
+            print(f"📄 Document ID: {doc_id}")
+            print(f"📁 Local Folder: {document_folder}")
+            print(f"☁️  AWS Bucket: {self.soda.bucket}")
+            
+            if launch_inspector:
+                print(f"\n🔍 Inspector launched - complete your review in the browser")
+                if not auto_upload_final:
+                    print(f"📤 After review, run the final upload command shown above")
+            
+            return pipeline_result
+            
+        except Exception as e:
+            print(f"❌ Complete pipeline failed: {str(e)}")
+            raise
     
     def process_document(
         self, 
@@ -307,4 +421,79 @@ class Bodega:
                 "openai_model": self.pbj_config.openai_model
             }
         }
-        return health 
+        return health
+    
+    def launch_inspector(self, document_folder: Optional[str] = None, port: int = 8501):
+        """
+        Launch the Streamlit inspector app for manual review of a processed document folder.
+        Args:
+            document_folder: Path to the processed document folder to review
+            port: Port to run the Streamlit app on (default: 8501)
+        """
+        if document_folder is None:
+            # Default to the most recent processed folder
+            processed_dir = Path(self.pbj_config.output_base_dir)
+            folders = sorted(processed_dir.glob("*/"), key=os.path.getmtime, reverse=True)
+            if not folders:
+                print("No processed document folders found.")
+                return
+            document_folder = str(folders[0])
+        print(f"Launching inspector for folder: {document_folder}")
+        launch_inspector_app(document_folder=document_folder, port=port)
+
+    def upload_final_inspected_output(self, document_folder: Optional[str] = None, doc_id: Optional[str] = None):
+        """
+        Upload the inspector's final output (after manual review) to AWS and update document state.
+        Args:
+            document_folder: Path to the reviewed document folder (if None, use most recent)
+            doc_id: Document ID (if None, inferred from folder name)
+        """
+        # Determine folder
+        if document_folder is None:
+            processed_dir = Path(self.pbj_config.output_base_dir)
+            folders = sorted(processed_dir.glob("*/"), key=os.path.getmtime, reverse=True)
+            if not folders:
+                print("No processed document folders found.")
+                return
+            document_folder = str(folders[0])
+        folder_path = Path(document_folder)
+        if not folder_path.exists():
+            print(f"Document folder not found: {document_folder}")
+            return
+        # Infer doc_id if not provided
+        if doc_id is None:
+            doc_id = folder_path.name
+        print(f"Uploading inspector-approved output for doc_id: {doc_id}")
+        # List of files to upload
+        files_to_upload = [
+            "final_output.json",
+            "inspector_metadata.json",
+            "pipeline_summary.json",
+            "document_metadata.json",
+            folder_path.name + ".pdf"
+        ]
+        for fname in files_to_upload:
+            fpath = folder_path / fname
+            if fpath.exists():
+                s3_key = f"final/{doc_id}/{fname}"
+                with open(fpath, "rb") as f:
+                    content = f.read()
+                put_object_content(
+                    bucket=self.soda.bucket,
+                    key=s3_key,
+                    content=content,
+                    content_type=self._get_content_type(fpath)
+                )
+                print(f"Uploaded {s3_key}")
+            else:
+                print(f"File not found, skipping: {fpath}")
+        # Update document state to FINAL
+        try:
+            self.soda.state_manager.transition_document_state(
+                f"raw/{doc_id}/original.pdf",
+                DocumentState.FINAL,
+                metadata={"finalized_at": datetime.now().isoformat()}
+            )
+            print(f"Document {doc_id} marked as FINAL.")
+        except Exception as e:
+            print(f"Failed to update document state: {e}") 

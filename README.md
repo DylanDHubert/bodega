@@ -1,184 +1,323 @@
-# Bodega
+# 🏪 Bodega - Complete RAG Processing Pipeline
 
-A complete RAG (Retrieval-Augmented Generation) processing pipeline that combines PDF parsing, enhancement, JSON extraction, and AWS document storage with state management.
+A comprehensive document processing pipeline that combines PDF parsing, AI enhancement, structured data extraction, and manual review workflows.
 
-## Overview
+## 🚀 Complete Pipeline Overview
 
-Bodega integrates two powerful components:
-- **PB&J Pipeline**: Complete PDF processing with 4 stages (Peanut, Butter, Jelly, Toast)
-- **Soda**: AWS S3-based document storage with state management
+Bodega provides a complete end-to-end solution:
 
-## Quick Start
-
-```python
-from src.bodega import Bodega
-
-# Initialize Bodega with AWS integration
-bodega = Bodega(
-    aws_bucket="your-s3-bucket",
-    aws_region="us-east-1",
-    use_premium=False,
-    openai_model="gpt-4"
-)
-
-# Process a PDF through the complete pipeline
-result = bodega.process_document("document.pdf")
-print(f"Document ID: {result['doc_id']}")
-print(f"Processing Time: {result['processing_info']['total_time_seconds']:.2f}s")
+```
+PDF Input → PB&J Processing → AWS Upload → Inspector Review → Final AWS Upload
 ```
 
-## Pipeline Flow
+### Pipeline Steps:
 
-1. **PDF Input** → **PB&J Processing** (4-stage pipeline)
-2. **Intermediate Results** → **AWS Storage** (Soda)
-3. **Document State Management** → **Final Results**
-4. **Content Retrieval** → **RAG Applications**
+1. **📄 PDF Input** - Take any PDF document
+2. **🥪 PB&J Processing** - Parse, enhance, and structure the content
+3. **☁️ AWS Upload** - Store intermediate results in S3
+4. **🔍 Inspector Review** - Manual review and correction via Streamlit
+5. **📤 Final Upload** - Upload approved final results to AWS with FINAL tag
 
-## PB&J Pipeline Stages
+## 🏗️ Architecture
 
-1. **Peanut (Parse)**: PDF → Markdown using LlamaParse
-2. **Butter (Better)**: Markdown → Enhanced Markdown using OpenAI
-3. **Jelly (JSON)**: Enhanced Markdown → Structured JSON using OpenAI
-4. **Toast (Format)**: Column-based → Row-based JSON conversion
+Bodega integrates three core components:
 
-## Soda Document States
+- **🥪 PB&J (Peanut Butter & Jelly)** - PDF processing pipeline
+- **🥤 Soda** - AWS document storage and state management  
+- **🔍 Inspector** - Streamlit-based manual review interface
 
-- **RAW**: Uploaded PDF awaiting processing
-- **PROCESSING**: Currently being processed
-- **PROCESSED**: Successfully processed, outputs created
-- **FINAL**: Approved output, ready for use
-
-## Configuration
-
-### Environment Variables
+## 📦 Installation
 
 ```bash
-# Required for AWS integration
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-DOC_BUCKET=your-s3-bucket-name
-AWS_REGION=us-east-1
+# Clone the repository
+git clone <repository-url>
+cd bodega
 
-# Required for PDF processing
-LLAMAPARSE_API_KEY=your_llamaparse_key
-OPENAI_API_KEY=your_openai_key
-```
-
-### Programmatic Configuration
-
-```python
-from src.bodega import Bodega
-
-bodega = Bodega(
-    aws_bucket="my-documents-bucket",
-    aws_region="us-west-2",
-    pbj_config={
-        "output_base_dir": "processed_docs",
-        "use_premium_mode": True,
-        "openai_model": "gpt-4-turbo"
-    }
-)
-```
-
-## Usage Examples
-
-### Process a Document
-
-```python
-# Process with AWS upload
-result = bodega.process_document(
-    pdf_path="document.pdf",
-    upload_to_aws=True
-)
-
-# Local processing only
-result = bodega.process_document(
-    pdf_path="document.pdf", 
-    upload_to_aws=False
-)
-```
-
-### List Documents
-
-```python
-# List pending documents
-pending = bodega.list_pending_documents(limit=10)
-
-# List processed documents
-processed = bodega.get_processed_documents(limit=10)
-```
-
-### Retrieve Content
-
-```python
-# Get processed content
-content = bodega.get_document_content("doc_123")
-if content:
-    print(f"Markdown: {content['md_content']}")
-    print(f"JSON: {content['json_content']}")
-```
-
-## Installation
-
-```bash
 # Install dependencies
 pip install -r requirements.txt
 
 # Set up environment variables
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+Create a `.env` file with your API credentials:
+
+```bash
+# Required for PDF processing
+LLAMAPARSE_API_KEY=your_llamaparse_key
+OPENAI_API_KEY=your_openai_key
+
+# Required for AWS storage
+AWS_ACCESS_KEY_ID=your_aws_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret
+AWS_DEFAULT_REGION=us-east-1
+
+# Optional: S3 bucket name (defaults to 'bodega-documents')
+BODEGA_BUCKET=your-bucket-name
+```
+
+### Configuration File
+
+Edit `config.yaml` to customize processing settings:
+
+```yaml
+# PB&J Pipeline Settings
+pbj:
+  output_base_dir: "processed_documents"
+  use_premium_mode: false
+  openai_model: "gpt-4"
+  
+# AWS Storage Settings  
+aws:
+  bucket_name: "bodega-documents"
+  region: "us-east-1"
+  
+# Inspector Settings
+inspector:
+  port: 8501
+  auto_open_browser: true
+```
+
+## 🚀 Quick Start
+
+### Complete End-to-End Pipeline
+
+```python
+from bodega.bodega import Bodega
+
+# Initialize Bodega
+bodega = Bodega(
+    aws_bucket="your-bucket-name",
+    aws_region="us-east-1"
+)
+
+# Run complete pipeline: PDF → PB&J → AWS → Inspector → Final AWS
+result = bodega.process_complete_pipeline(
+    pdf_path="document.pdf",
+    launch_inspector=True,  # Opens Inspector after processing
+    auto_upload_final=False  # Manual final upload after review
+)
+
+print(f"Pipeline complete! Document ID: {result['document_info']['doc_id']}")
+```
+
+### Step-by-Step Processing
+
+```python
+# Step 1: Process PDF with PB&J
+result = bodega.process_document("document.pdf", upload_to_aws=True)
+
+# Step 2: Launch Inspector for review
+document_folder = result['pbj_pipeline']['pipeline_info']['document_folder']
+bodega.launch_inspector(document_folder=document_folder)
+
+# Step 3: Upload final approved output
+bodega.upload_final_inspected_output(document_folder=document_folder)
+```
+
+## 📊 Pipeline Capabilities
+
+### Stage 1: PB&J Processing
+- **Input**: PDF documents
+- **Output**: Structured JSON + Enhanced Markdown
+- **Storage**: Local `processed_documents/` folder
+- **Features**:
+  - PDF parsing with LlamaParse
+  - AI-powered content enhancement
+  - Table extraction and formatting
+  - Keyword extraction
+  - Page-by-page processing
+
+### Stage 2: AWS Upload
+- **Input**: Processed document folder
+- **Output**: S3 objects in `processed/{doc_id}/`
+- **Storage**: AWS S3 bucket
+- **Features**:
+  - Complete folder structure preservation
+  - Document state management
+  - Metadata tracking
+  - Version control
+
+### Stage 3: Inspector Review
+- **Input**: Processed document folder
+- **Output**: Corrected/approved data
+- **Interface**: Streamlit web app
+- **Features**:
+  - Visual document review
+  - Data correction interface
+  - Export final results
+  - Quality assurance workflow
+
+### Stage 4: Final Upload
+- **Input**: Inspector-approved data
+- **Output**: S3 objects in `final/{doc_id}/`
+- **Storage**: AWS S3 bucket with FINAL state
+- **Features**:
+  - Final approved data storage
+  - Document state transition to FINAL
+  - Audit trail completion
+
+## 📁 File Structure
+
+```
+bodega/
+├── src/bodega/
+│   ├── bodega.py              # Main orchestrator
+│   │   ├── bodega.py          # Main PB&J orchestrator
+│   │   ├── peanut.py          # PDF parsing
+│   │   ├── butter.py          # Content enhancement
+│   │   ├── jelly.py           # JSON structuring
+│   │   └── toast.py           # Data formatting
+│   ├── soda/                  # AWS document storage
+│   │   ├── document_store.py  # Main storage interface
+│   │   ├── s3_ops.py          # S3 operations
+│   │   └── document_states.py # State management
+│   └── inspector/             # Manual review interface
+│       ├── sandwich_inspector_app.py  # Streamlit app
+│       └── launch.py          # App launcher
+├── processed_documents/       # Local processing output
+├── config.yaml               # Configuration
+├── requirements.txt          # Dependencies
+└── test_bodega.py           # Test script
+```
+
+## 🧪 Testing
+
+Run the complete pipeline test:
+
+```bash
+# Set environment variables
 export LLAMAPARSE_API_KEY="your_key"
 export OPENAI_API_KEY="your_key"
-export DOC_BUCKET="your_bucket"
+export AWS_ACCESS_KEY_ID="your_key"
+export AWS_SECRET_ACCESS_KEY="your_secret"
+
+# Run test
+python test_bodega.py
 ```
 
-## Requirements
+The test will:
+1. Process `test_data.pdf` with PB&J
+2. Upload intermediate results to AWS
+3. Launch Inspector for manual review
+4. Provide instructions for final upload
 
-- Python 3.8+
-- LlamaParse API key
-- OpenAI API key
-- AWS credentials (for S3 storage)
-- S3 bucket for document storage
+## 🔍 Inspector Interface
 
-## Architecture
+The Inspector provides a web-based interface for:
 
-```
-┌─────────────────┐    ┌─────────────────┐
-│   PDF Input     │    │   AWS S3        │
-│   (Local/URL)   │    │   (Soda)        │
-└─────────┬───────┘    └─────────┬───────┘
-          │                      │
-          └──────────┬───────────┘
-                     │
-          ┌──────────▼───────────┐
-          │    Bodega            │
-          │  (Orchestrator)      │
-          └──────────┬───────────┘
-                     │
-          ┌──────────▼───────────┐
-          │   PB&J Pipeline      │
-          │  (4-stage process)   │
-          └──────────┬───────────┘
-                     │
-          ┌──────────▼───────────┐
-          │   Final Output       │
-          │  (JSON + Metadata)   │
-          └──────────────────────┘
+- **Document Review**: Visual inspection of processed content
+- **Data Correction**: Edit extracted tables and text
+- **Quality Assurance**: Verify processing accuracy
+- **Export**: Generate final approved output
+
+Launch Inspector:
+```python
+bodega.launch_inspector(document_folder="path/to/processed/doc")
 ```
 
-## Example Output Structure
+## 📈 Document States
 
+Documents progress through these states:
+
+1. **RAW** - Initial upload
+2. **PROCESSING** - PB&J pipeline running
+3. **PROCESSED** - Pipeline complete, ready for review
+4. **FINAL** - Inspector approved, final upload complete
+
+## 🛠️ Advanced Usage
+
+### Custom PB&J Configuration
+
+```python
+pbj_config = {
+    'use_premium_mode': True,
+    'openai_model': 'gpt-4-turbo',
+    'output_base_dir': 'custom_output'
+}
+
+bodega = Bodega(
+    aws_bucket="my-bucket",
+    pbj_config=pbj_config
+)
 ```
-processed_documents/
-└── document_20241201_143022/
-    ├── original.pdf
-    ├── document_metadata.json
-    ├── pipeline_summary.json
-    ├── final_output.json
-    ├── 01_parsed_markdown/
-    ├── 02_enhanced_markdown/
-    └── 03_cleaned_json/
+
+### Batch Processing
+
+```python
+# Process multiple documents
+documents = ["doc1.pdf", "doc2.pdf", "doc3.pdf"]
+
+for doc in documents:
+    result = bodega.process_document(doc, upload_to_aws=True)
+    print(f"Processed: {result['doc_id']}")
 ```
 
-## API Keys Required
+### Document Management
 
-- **LlamaParse**: [https://cloud.llamaindex.ai/](https://cloud.llamaindex.ai/)
-- **OpenAI**: [https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys)
+```python
+# List pending documents
+pending = bodega.list_pending_documents()
+
+# Get processed documents
+processed = bodega.get_processed_documents()
+
+# Retrieve document content
+content = bodega.get_document_content("doc_id")
+```
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+1. **Missing API Keys**
+   - Ensure `LLAMAPARSE_API_KEY` and `OPENAI_API_KEY` are set
+   - Check `.env` file or environment variables
+
+2. **AWS Permissions**
+   - Verify S3 bucket access permissions
+   - Check AWS credentials and region
+
+3. **Inspector Not Launching**
+   - Ensure Streamlit is installed: `pip install streamlit`
+   - Check port availability (default: 8501)
+
+4. **Processing Failures**
+   - Check PDF file format and size
+   - Verify API rate limits
+   - Review error logs in console output
+
+### Debug Mode
+
+Enable detailed logging:
+
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+bodega = Bodega(aws_bucket="test-bucket")
+```
+
+## 📝 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+## 📞 Support
+
+For issues and questions:
+- Check the troubleshooting section
+- Review error logs
+- Open an issue on GitHub

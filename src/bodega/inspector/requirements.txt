@@ -1,0 +1,14 @@
+# 🥪 Sandwich Inspector Requirements
+# ===================================
+# Simplified requirements for document review/editing tool
+
+# Streamlit for the web interface
+streamlit>=1.28.0
+pandas>=2.0.0
+
+# PDF display and handling
+PyMuPDF>=1.23.0
+
+# Additional dependencies for the inspector app
+pathlib2>=2.3.0  # For better path handling
+dataclasses-json>=0.5.0  # For better JSON serialization
